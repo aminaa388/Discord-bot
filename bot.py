@@ -106,9 +106,9 @@ async def on_message(message):
             try:
                 await message.author.timeout(timedelta(seconds=10))
                 await message.channel.send(
-                    f"{message.author.mention} spam dÃ©tectÃ©, mute 10s."
+                    f"{message.author.mention} spam détecté, mute 10s."
                 )
-                await send_log(message.guild, f"Spam dÃ©tectÃ© : {message.author}")
+                await send_log(message.guild, f"Spam détecté : {message.author}")
             except Exception:
                 pass
 
@@ -175,7 +175,7 @@ async def backup(ctx):
             except Exception:
                 pass
 
-    await ctx.send("Backup terminÃ© !")
+    await ctx.send("Backup terminé !")
 
 
 # =========================
@@ -196,7 +196,7 @@ async def dmall(ctx, *, message):
             await asyncio.sleep(1.5)
         except Exception:
             failed += 1
-    await ctx.send(f"{success} envoyÃ©s | {failed} Ã©checs")
+    await ctx.send(f"{success} envoyés | {failed} échecs")
 
 
 # =========================
@@ -206,7 +206,7 @@ async def dmall(ctx, *, message):
 @commands.has_permissions(manage_messages=True)
 async def clear(ctx, amount: int):
     await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"{amount} messages supprimÃ©s", delete_after=3)
+    await ctx.send(f"{amount} messages supprimés", delete_after=3)
 
 
 @bot.command()
@@ -247,7 +247,7 @@ async def infos(ctx, member: discord.Member = None):
     embed = discord.Embed(title="Infos utilisateur", color=discord.Color.blue())
     embed.add_field(name="Nom", value=member.name)
     embed.add_field(name="ID", value=member.id)
-    embed.add_field(name="CrÃ©ation", value=member.created_at.strftime("%d/%m/%Y"))
+    embed.add_field(name="Création", value=member.created_at.strftime("%d/%m/%Y"))
     embed.add_field(name="Rejoint", value=member.joined_at.strftime("%d/%m/%Y"))
     if member.avatar:
         embed.set_thumbnail(url=member.avatar.url)
@@ -278,11 +278,11 @@ async def infractions(ctx, member: discord.Member):
 @bot.command()
 async def unwarn(ctx, member: discord.Member):
     warns.pop(member.id, None)
-    await ctx.send(f"Avertissements de {member.mention} rÃ©initialisÃ©s.")
+    await ctx.send(f"Avertissements de {member.mention} réinitialisés.")
 
 
 # =========================
-# ROLES â€” SELECTEUR
+# ROLES — SELECTEUR
 # =========================
 class RoleSelect(Select):
     def __init__(self, member, action):
@@ -298,7 +298,7 @@ class RoleSelect(Select):
         ]
 
         super().__init__(
-            placeholder="SÃ©lectionne les rÃ´les...",
+            placeholder="Sélectionne les rôles...",
             min_values=1,
             max_values=min(5, len(options)),
             options=options,
@@ -329,16 +329,16 @@ class RoleSelect(Select):
         embed = discord.Embed(color=discord.Color.blue())
 
         if self.action == "add":
-            embed.title = "Ajout de rÃ´les"
+            embed.title = "Ajout de rôles"
             embed.description = "\n".join(f"+ {r}" for r in added) or "Aucun"
         elif self.action == "remove":
-            embed.title = "Retrait de rÃ´les"
+            embed.title = "Retrait de rôles"
             embed.description = "\n".join(f"- {r}" for r in removed) or "Aucun"
 
         if failed:
             embed.add_field(name="Echec", value="\n".join(failed), inline=False)
 
-        embed.set_footer(text=f"DemandÃ© par {interaction.user}")
+        embed.set_footer(text=f"Demandé par {interaction.user}")
         await interaction.response.edit_message(embed=embed, view=None)
 
 
@@ -352,8 +352,8 @@ class RoleView(View):
 @commands.has_permissions(manage_roles=True)
 async def addrole(ctx, member: discord.Member):
     embed = discord.Embed(
-        title="Ajout de rÃ´les",
-        description=f"SÃ©lectionne les rÃ´les Ã  ajouter Ã  {member.mention}",
+        title="Ajout de rôles",
+        description=f"Sélectionne les rôles à ajouter à {member.mention}",
         color=discord.Color.green(),
     )
     await ctx.send(embed=embed, view=RoleView(member, "add"))
@@ -363,8 +363,8 @@ async def addrole(ctx, member: discord.Member):
 @commands.has_permissions(manage_roles=True)
 async def removerole(ctx, member: discord.Member):
     embed = discord.Embed(
-        title="Retrait de rÃ´les",
-        description=f"SÃ©lectionne les rÃ´les Ã  retirer Ã  {member.mention}",
+        title="Retrait de rôles",
+        description=f"Sélectionne les rôles à retirer à {member.mention}",
         color=discord.Color.red(),
     )
     await ctx.send(embed=embed, view=RoleView(member, "remove"))
@@ -391,13 +391,13 @@ async def derank(ctx, member: discord.Member):
 
     embed = discord.Embed(title="Derank", color=discord.Color.orange())
     embed.add_field(
-        name="RÃ´les retirÃ©s",
+        name="Rôles retirés",
         value="\n".join(removed) if removed else "Aucun",
         inline=False,
     )
     if failed:
         embed.add_field(name="Echec", value="\n".join(failed), inline=False)
-    embed.set_footer(text=f"Total : {len(removed)} rÃ´les retirÃ©s | D'kuva conservÃ©")
+    embed.set_footer(text=f"Total : {len(removed)} rôles retirés | D'kuva conservé")
     await ctx.send(embed=embed)
 
 
@@ -408,11 +408,11 @@ async def derank(ctx, member: discord.Member):
 @commands.check(is_owner)
 async def addowner(ctx, member: discord.Member):
     if member.id in owners:
-        return await ctx.send(f"{member.mention} est dÃ©jÃ  owner.")
+        return await ctx.send(f"{member.mention} est déjà owner.")
     owners.append(member.id)
     save_owners(owners)
-    await ctx.send(f"{member.mention} ajoutÃ© comme owner du bot.")
-    await send_log(ctx.guild, f"{member} ajoutÃ© comme owner par {ctx.author}")
+    await ctx.send(f"{member.mention} ajouté comme owner du bot.")
+    await send_log(ctx.guild, f"{member} ajouté comme owner par {ctx.author}")
 
 
 @bot.command()
@@ -422,18 +422,18 @@ async def removeowner(ctx, member: discord.Member):
         return await ctx.send(f"{member.mention} n'est pas owner.")
     owners.remove(member.id)
     save_owners(owners)
-    await ctx.send(f"{member.mention} retirÃ© des owners.")
-    await send_log(ctx.guild, f"{member} retirÃ© des owners par {ctx.author}")
+    await ctx.send(f"{member.mention} retiré des owners.")
+    await send_log(ctx.guild, f"{member} retiré des owners par {ctx.author}")
 
 
 @bot.command(name="owners")
 async def list_owners(ctx):
     if not owners:
-        return await ctx.send("Aucun owner enregistrÃ©.")
+        return await ctx.send("Aucun owner enregistré.")
     lines = []
     for uid in owners:
         user = ctx.guild.get_member(uid) or await bot.fetch_user(uid)
-        lines.append(f"â€¢ {user} (`{uid}`)")
+        lines.append(f"• {user} (`{uid}`)")
     embed = discord.Embed(
         title="Owners du bot", description="\n".join(lines), color=discord.Color.gold()
     )
@@ -459,7 +459,7 @@ async def bl(ctx, member: discord.Member, *, reason="Blacklist"):
     blacklist[str(member.id)] = reason
     save_blacklist(blacklist)
     await member.ban(reason=reason)
-    await ctx.send(f"{member.mention} ajoutÃ© Ã  la blacklist.")
+    await ctx.send(f"{member.mention} ajouté à la blacklist.")
     await send_log(ctx.guild, f"{member} BL | {reason}")
 
 
@@ -467,12 +467,12 @@ async def bl(ctx, member: discord.Member, *, reason="Blacklist"):
 @commands.has_permissions(administrator=True)
 async def unbl(ctx, user_id: int):
     if str(user_id) not in blacklist:
-        return await ctx.send("Cet utilisateur n'est pas blacklistÃ©.")
+        return await ctx.send("Cet utilisateur n'est pas blacklisté.")
     user = await bot.fetch_user(user_id)
     del blacklist[str(user_id)]
     save_blacklist(blacklist)
     await ctx.guild.unban(user)
-    await ctx.send(f"{user} retirÃ© de la blacklist.")
+    await ctx.send(f"{user} retiré de la blacklist.")
     await send_log(ctx.guild, f"{user} UNBL")
 
 
@@ -480,7 +480,7 @@ async def unbl(ctx, user_id: int):
 async def blist(ctx):
     if not blacklist:
         return await ctx.send("La blacklist est vide.")
-    msg = "\n".join([f"<@{uid}> â€” {reason}" for uid, reason in blacklist.items()])
+    msg = "\n".join([f"<@{uid}> — {reason}" for uid, reason in blacklist.items()])
     embed = discord.Embed(title="Blacklist", description=msg, color=discord.Color.red())
     await ctx.send(embed=embed)
 
@@ -492,14 +492,14 @@ async def blist(ctx):
 @commands.has_permissions(manage_channels=True)
 async def lock(ctx):
     await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-    await ctx.send(f"{ctx.channel.mention} verrouillÃ©.")
+    await ctx.send(f"{ctx.channel.mention} verrouillé.")
 
 
 @bot.command()
 @commands.has_permissions(manage_channels=True)
 async def unlock(ctx):
     await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-    await ctx.send(f"{ctx.channel.mention} dÃ©verrouillÃ©.")
+    await ctx.send(f"{ctx.channel.mention} déverrouillé.")
 
 
 # =========================
@@ -530,7 +530,7 @@ class TicketSelect(Select):
             ),
         ]
         super().__init__(
-            placeholder="Îµ ðŸ· ãƒ» Ticket Kuva #ðŸ‡µðŸ‡¸",
+            placeholder="ε 🏷 ・ Ticket Kuva #🇵🇸",
             min_values=1,
             max_values=1,
             options=options,
@@ -566,12 +566,12 @@ class TicketSelect(Select):
         )
 
         await interaction.followup.send(
-            f"Ticket crÃ©Ã© : {channel.mention}", ephemeral=True
+            f"Ticket créé : {channel.mention}", ephemeral=True
         )
 
         embed = discord.Embed(
             title="Ticket ouvert",
-            description=f"{user.mention} explique ton problÃ¨me.\nType : **{type_ticket}**",
+            description=f"{user.mention} explique ton problème.\nType : **{type_ticket}**",
             color=discord.Color.blue(),
         )
         await channel.send(embed=embed, view=CloseView())
@@ -599,7 +599,7 @@ class CloseView(View):
 async def ticket(ctx):
     embed = discord.Embed(
         title="Ouvrir un ticket",
-        description="SÃ©lectionne le type de ticket dans le menu ci-dessous",
+        description="Sélectionne le type de ticket dans le menu ci-dessous",
         color=discord.Color.green(),
     )
     await ctx.send(embed=embed, view=TicketView())
@@ -639,117 +639,117 @@ async def rename(ctx, *, name):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
-        title="ðŸ“‹ Liste des commandes",
-        description="PrÃ©fixe : `!`",
+        title="📋 Liste des commandes",
+        description="Préfixe : `!`",
         color=discord.Color.blurple(),
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ”§ BACKUP",
+        name="━━━━━━━━━━━━━━━━━━\n🔧 BACKUP",
         value=(
             "`!backup`\n"
-            "Copie le serveur source vers le serveur cible (rÃ´les, catÃ©gories, salons).\n"
-            "âš ï¸ RÃ©servÃ© aux administrateurs."
+            "Copie le serveur source vers le serveur cible (rôles, catégories, salons).\n"
+            "⚠️ Réservé aux administrateurs."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ“¨ MESSAGES",
+        name="━━━━━━━━━━━━━━━━━━\n📨 MESSAGES",
         value=(
             "`!dmall <message>`\n"
-            "Envoie un DM Ã  tous les membres.\n"
+            "Envoie un DM à tous les membres.\n"
             "Exemple : `!dmall Bienvenue !`\n"
-            "âš ï¸ RÃ©servÃ© aux administrateurs."
+            "⚠️ Réservé aux administrateurs."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ›¡ï¸ MODÃ‰RATION",
+        name="━━━━━━━━━━━━━━━━━━\n🛡️ MODÉRATION",
         value=(
-            "`!ban @membre <raison>` â€” Bannit un membre.\n"
-            "`!kick @membre` â€” Expulse un membre.\n"
-            "`!mute @membre <minutes>` â€” Mute un membre X minutes.\n"
-            "`!unmute @membre` â€” Retire le mute.\n"
-            "`!clear <nombre>` â€” Supprime X messages.\n"
-            "`!lock` â€” Verrouille le salon (personne ne peut Ã©crire).\n"
-            "`!unlock` â€” DÃ©verrouille le salon."
+            "`!ban @membre <raison>` — Bannit un membre.\n"
+            "`!kick @membre` — Expulse un membre.\n"
+            "`!mute @membre <minutes>` — Mute un membre X minutes.\n"
+            "`!unmute @membre` — Retire le mute.\n"
+            "`!clear <nombre>` — Supprime X messages.\n"
+            "`!lock` — Verrouille le salon (personne ne peut écrire).\n"
+            "`!unlock` — Déverrouille le salon."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâš ï¸ AVERTISSEMENTS",
+        name="━━━━━━━━━━━━━━━━━━\n⚠️ AVERTISSEMENTS",
         value=(
-            "`!warn @membre <raison>` â€” Avertit un membre.\n"
-            "`!infractions @membre` â€” Affiche tous les avertissements d'un membre.\n"
-            "`!unwarn @membre` â€” RÃ©initialise les avertissements d'un membre."
+            "`!warn @membre <raison>` — Avertit un membre.\n"
+            "`!infractions @membre` — Affiche tous les avertissements d'un membre.\n"
+            "`!unwarn @membre` — Réinitialise les avertissements d'un membre."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸŽ­ RÃ”LES",
+        name="━━━━━━━━━━━━━━━━━━\n🎭 RÔLES",
         value=(
-            "`!addrole @membre` â€” Ouvre un sÃ©lecteur pour choisir les rÃ´les Ã  ajouter.\n"
-            "`!removerole @membre` â€” Ouvre un sÃ©lecteur pour choisir les rÃ´les Ã  retirer.\n"
-            "`!derank @membre` â€” Retire tous les rÃ´les du membre (sauf D'kuva)."
+            "`!addrole @membre` — Ouvre un sélecteur pour choisir les rôles à ajouter.\n"
+            "`!removerole @membre` — Ouvre un sélecteur pour choisir les rôles à retirer.\n"
+            "`!derank @membre` — Retire tous les rôles du membre (sauf D'kuva)."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ“Š INFORMATIONS",
+        name="━━━━━━━━━━━━━━━━━━\n📊 INFORMATIONS",
         value=(
-            "`!infos @membre` â€” Affiche les infos d'un membre.\n"
+            "`!infos @membre` — Affiche les infos d'un membre.\n"
             "Sans mention, affiche vos propres infos."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸŽ« TICKETS",
+        name="━━━━━━━━━━━━━━━━━━\n🎫 TICKETS",
         value=(
-            "`!ticket` â€” Affiche le panel de ticket avec le sÃ©lecteur.\n"
-            "`!close` â€” Ferme et supprime le ticket actuel.\n"
-            "`!rename <nom>` â€” Renomme le salon du ticket.\n"
+            "`!ticket` — Affiche le panel de ticket avec le sélecteur.\n"
+            "`!close` — Ferme et supprime le ticket actuel.\n"
+            "`!rename <nom>` — Renomme le salon du ticket.\n"
             "Exemple : `!rename probleme-connexion`"
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ‘‘ OWNERS",
+        name="━━━━━━━━━━━━━━━━━━\n👑 OWNERS",
         value=(
-            "`!addowner @membre` â€” Ajoute un membre comme owner du bot.\n"
-            "`!removeowner @membre` â€” Retire un membre des owners.\n"
-            "`!owners` â€” Affiche la liste des owners.\n"
-            "âš ï¸ RÃ©servÃ© aux owners et administrateurs. La liste est sauvegardÃ©e."
+            "`!addowner @membre` — Ajoute un membre comme owner du bot.\n"
+            "`!removeowner @membre` — Retire un membre des owners.\n"
+            "`!owners` — Affiche la liste des owners.\n"
+            "⚠️ Réservé aux owners et administrateurs. La liste est sauvegardée."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâ›” BLACKLIST",
+        name="━━━━━━━━━━━━━━━━━━\n⛔ BLACKLIST",
         value=(
-            "`!bl @membre <raison>` â€” Bannit et blackliste un membre.\n"
+            "`!bl @membre <raison>` — Bannit et blackliste un membre.\n"
             "Si ce membre rejoint un autre serveur avec le bot, il est banni automatiquement.\n\n"
-            "`!unbl <ID>` â€” Retire un membre de la blacklist et le dÃ©bannit.\n"
+            "`!unbl <ID>` — Retire un membre de la blacklist et le débannit.\n"
             "Exemple : `!unbl 123456789`\n"
-            "âš ï¸ RÃ©servÃ© aux administrateurs.\n\n"
-            "`!blist` â€” Affiche la liste de tous les membres blacklistÃ©s."
+            "⚠️ Réservé aux administrateurs.\n\n"
+            "`!blist` — Affiche la liste de tous les membres blacklistés."
         ),
         inline=False,
     )
 
     embed.add_field(
-        name="â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ¤– ANTI-SPAM",
-        value="Automatique â€” si un membre envoie 5 messages en moins de 5 secondes, il est mutÃ© 10 secondes.",
+        name="━━━━━━━━━━━━━━━━━━\n🤖 ANTI-SPAM",
+        value="Automatique — si un membre envoie 5 messages en moins de 5 secondes, il est muté 10 secondes.",
         inline=False,
     )
 
-    embed.set_footer(text="Bot dÃ©veloppÃ© sur Replit")
+    embed.set_footer(text="Bot développé sur Replit")
     await ctx.send(embed=embed)
 
 
