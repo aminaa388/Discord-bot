@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import discord
 from discord.ext import commands
 from discord.ui import Button, View, Select
@@ -5,14 +6,19 @@ import asyncio
 import os
 import json
 import re
+import random
 import aiohttp
-from datetime import timedelta
+import urllib.parse
+from datetime import datetime, timedelta
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 SOURCE_GUILD_ID = int(os.environ["SOURCE_GUILD_ID"])
 TARGET_GUILD_ID = int(os.environ["TARGET_GUILD_ID"])
+VERIFIED_ROLE_ID = int(os.environ.get("VERIFIED_ROLE_ID", 0))
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "1490613935400030248")
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", "")
 
 LOG_CHANNEL_NAME = "logs"
 warns = {}
@@ -20,6 +26,30 @@ spam_tracker = {}
 
 BLACKLIST_FILE = "blacklist.json"
 OWNERS_FILE = "owners.json"
+GIVEAWAYS_FILE = "giveaways.json"
+
+
+def load_giveaways():
+    if not os.path.exists(GIVEAWAYS_FILE):
+        return {}
+    with open(GIVEAWAYS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_giveaways(data):
+    with open(GIVEAWAYS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def parse_duration(s):
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    match = re.fullmatch(r"(\d+)([smhd])", s.strip().lower())
+    if not match:
+        return None
+    return int(match.group(1)) * units[match.group(2)]
+
+
+active_giveaways = load_giveaways()
 
 
 def load_blacklist():
@@ -52,6 +82,48 @@ owners = load_owners()
 
 def is_owner(ctx):
     return ctx.author.id in owners or ctx.author.guild_permissions.administrator
+
+
+# =========================
+# VERIFICATION SYSTEM
+# =========================
+
+def build_oauth_url() -> str:
+    params = urllib.parse.urlencode({
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": OAUTH_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "guilds.join identify",
+    })
+    return f"https://discord.com/oauth2/authorize?{params}"
+
+
+class WhyButton(Button):
+    def __init__(self):
+        super().__init__(
+            label="Why ?",
+            style=discord.ButtonStyle.secondary,
+            custom_id="why_btn",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            "La verification sert a empecher les bots et comptes fake d'acceder au serveur.",
+            ephemeral=True,
+        )
+
+
+class VerifyView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        if OAUTH_REDIRECT_URI:
+            self.add_item(Button(
+                label="Verify now",
+                style=discord.ButtonStyle.link,
+                url=build_oauth_url(),
+                emoji="âœ…",
+            ))
+        self.add_item(WhyButton())
 
 
 # =========================
@@ -190,6 +262,7 @@ class TicketView(View):
 async def on_ready():
     bot.add_view(TicketView())
     bot.add_view(CloseView())
+    bot.add_view(VerifyView())
     print(f"Connecte en tant que {bot.user}")
     print(f"Serveur source : {SOURCE_GUILD_ID}")
     print(f"Serveur cible  : {TARGET_GUILD_ID}")
@@ -774,6 +847,283 @@ async def emojis(ctx):
 
 
 # =========================
+# VERIFICATION COMMANDES
+# =========================
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def verif(ctx):
+    guild_name = ctx.guild.name
+    embed = discord.Embed(
+        color=0x5865F2,
+        title="ðŸ¤– Verification required",
+        description=(
+            f"To gain access to **{guild_name}** you need to prove you are a human by completing verification. "
+            f"Click the button below to get started!"
+        ),
+    )
+    if ctx.guild.icon:
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+    embed.set_footer(text=guild_name)
+    await ctx.send(embed=embed, view=VerifyView())
+    await ctx.message.delete()
+
+
+# =========================
+# JOIN â€” ajoute tous les membres OAuth2 a un serveur
+# =========================
+@bot.command(name="join")
+async def join_server(ctx, invite_link: str = None):
+    if not is_owner(ctx):
+        return await ctx.send("âŒ Commande reservee aux owners et administrateurs.", delete_after=5)
+    if not invite_link:
+        return await ctx.send("âŒ Usage : `!join <lien d'invitation>`", delete_after=5)
+
+    import re
+    match = re.search(r"discord(?:\.gg|\.com/invite)/([A-Za-z0-9\-]+)", invite_link)
+    if not match:
+        return await ctx.send("âŒ Lien d'invitation invalide.", delete_after=5)
+    invite_code = match.group(1)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"https://discord.com/api/v10/invites/{invite_code}",
+            headers={"Authorization": f"Bot {token}"},
+        ) as resp:
+            if resp.status != 200:
+                return await ctx.send("âŒ Impossible de resoudre l'invitation. Verifie que le lien est valide.", delete_after=8)
+            invite_data = await resp.json()
+            guild_id = invite_data.get("guild", {}).get("id")
+            guild_name = invite_data.get("guild", {}).get("name", "Serveur inconnu")
+
+    if not guild_id:
+        return await ctx.send("âŒ Impossible de recuperer l'ID du serveur depuis ce lien.", delete_after=8)
+
+    try:
+        with open("oauth_tokens.json", "r", encoding="utf-8") as f:
+            tokens: dict = json.load(f)
+    except FileNotFoundError:
+        return await ctx.send("âŒ Aucun utilisateur n'a encore autorise le bot (`!verif`).", delete_after=8)
+
+    if not tokens:
+        return await ctx.send("âŒ Aucun utilisateur n'a encore autorise le bot.", delete_after=8)
+
+    msg = await ctx.send(f"â³ Ajout de **{len(tokens)}** membres vers **{guild_name}**...")
+
+    success = 0
+    already = 0
+    failed = 0
+
+    async with aiohttp.ClientSession() as session:
+        for user_id, access_token in tokens.items():
+            try:
+                async with session.put(
+                    f"https://discord.com/api/v10/guilds/{guild_id}/members/{user_id}",
+                    headers={
+                        "Authorization": f"Bot {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"access_token": access_token},
+                ) as resp:
+                    if resp.status == 201:
+                        success += 1
+                    elif resp.status in (200, 204):
+                        already += 1
+                    else:
+                        failed += 1
+                await asyncio.sleep(0.5)
+            except Exception:
+                failed += 1
+
+    await msg.edit(content=(
+        f"âœ… TerminÃ© pour **{guild_name}** !\n"
+        f"â€¢ Ajoutes : **{success}**\n"
+        f"â€¢ Deja membres : **{already}**\n"
+        f"â€¢ Echecs : **{failed}**"
+    ))
+    await send_log(ctx.guild, f"!join vers {guild_name} â€” {success} ajoutes, {already} deja membres, {failed} echecs par {ctx.author}")
+
+
+# =========================
+# RECRUTEMENT
+# =========================
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def recrutement(ctx):
+    embed = discord.Embed(
+        color=0x2B2D31,
+        title="Recruitement uploader",
+        description=(
+            "**ðŸ‡«ðŸ‡·**\n"
+            "Hey, tu veux devenir uploader sur ce serveur ? C'est tres simple, tu dois juste respecter ces 3 conditions :\n\n"
+            "- Etre actif\n"
+            "- Avoir au minimum 14 ans\n"
+            "- Etre mature\n\n"
+            "Si tu remplis toutes ces conditions, ouvre un ticket.\n\n"
+            "â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n\n"
+            "**ðŸ‡ºðŸ‡¸**\n"
+            "Hey, do you want to become an uploader on this server? It's very simple, you just need to meet these 3 requirements:\n\n"
+            "- Be active\n"
+            "- Be at least 14 years old\n"
+            "- Be mature\n\n"
+            "If you meet all these requirements, feel free to open a ticket."
+        ),
+    )
+    embed.set_author(name=f"{ctx.guild.name} - Gestion")
+    embed.set_footer(text="Recruitment")
+    await ctx.send(embed=embed)
+    await ctx.message.delete()
+
+
+# =========================
+# GIVEAWAY
+# =========================
+async def run_giveaway(channel_id, message_id, prize, winner_count, host_id, end_time):
+    now = datetime.utcnow().timestamp()
+    wait = end_time - now
+    if wait > 0:
+        await asyncio.sleep(wait)
+
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        return
+
+    try:
+        msg = await channel.fetch_message(message_id)
+    except Exception:
+        return
+
+    reaction = discord.utils.get(msg.reactions, emoji="ðŸŽ‰")
+    if not reaction:
+        await channel.send("Aucun participant pour le giveaway.")
+        active_giveaways.pop(str(message_id), None)
+        save_giveaways(active_giveaways)
+        return
+
+    users = [u async for u in reaction.users() if not u.bot]
+    if not users:
+        await channel.send("Aucun participant valide pour le giveaway.")
+        active_giveaways.pop(str(message_id), None)
+        save_giveaways(active_giveaways)
+        return
+
+    winners = random.sample(users, min(winner_count, len(users)))
+    mentions = " ".join(w.mention for w in winners)
+
+    embed = discord.Embed(
+        title="Giveaway termine !",
+        description=f"Gagnant(s) : {mentions}\nPrix : **{prize}**",
+        color=discord.Color.gold(),
+    )
+    embed.set_footer(text=f"Organise par {bot.get_user(host_id)}")
+
+    await msg.edit(embed=embed)
+    await channel.send(f"Felicitations {mentions} ! Vous avez gagne **{prize}** !", embed=embed)
+
+    active_giveaways.pop(str(message_id), None)
+    save_giveaways(active_giveaways)
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gstart(ctx, duration: str, winners: int, *, prize: str):
+    seconds = parse_duration(duration)
+    if not seconds:
+        embed = discord.Embed(
+            description="Format invalide. Utilise : `!gstart 1h 1 Nitro`\nUnites : `s`, `m`, `h`, `d`",
+            color=discord.Color.red(),
+        )
+        return await ctx.send(embed=embed)
+
+    end_time = datetime.utcnow().timestamp() + seconds
+    end_dt = datetime.utcfromtimestamp(end_time)
+
+    embed = discord.Embed(
+        title="ðŸŽ‰ GIVEAWAY ðŸŽ‰",
+        description=(
+            f"**Prix :** {prize}\n"
+            f"**Gagnants :** {winners}\n"
+            f"**Fin :** <t:{int(end_time)}:R>\n"
+            f"**Organise par :** {ctx.author.mention}\n\n"
+            "Reagis avec ðŸŽ‰ pour participer !"
+        ),
+        color=0x5865F2,
+    )
+    embed.set_footer(text=f"Fin le {end_dt.strftime('%d/%m/%Y a %H:%M')} UTC")
+
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("ðŸŽ‰")
+
+    giveaway_data = {
+        "channel_id": ctx.channel.id,
+        "message_id": msg.id,
+        "prize": prize,
+        "winner_count": winners,
+        "host_id": ctx.author.id,
+        "end_time": end_time,
+    }
+    active_giveaways[str(msg.id)] = giveaway_data
+    save_giveaways(active_giveaways)
+
+    bot.loop.create_task(
+        run_giveaway(ctx.channel.id, msg.id, prize, winners, ctx.author.id, end_time)
+    )
+
+    confirm = discord.Embed(description=f"Giveaway lance ! Fin <t:{int(end_time)}:R>", color=discord.Color.green())
+    await ctx.send(embed=confirm, delete_after=5)
+    await ctx.message.delete()
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gend(ctx, message_id: int):
+    if str(message_id) not in active_giveaways:
+        embed = discord.Embed(description="Giveaway introuvable.", color=discord.Color.red())
+        return await ctx.send(embed=embed)
+
+    data = active_giveaways[str(message_id)]
+    data["end_time"] = 0
+    save_giveaways(active_giveaways)
+
+    bot.loop.create_task(
+        run_giveaway(
+            data["channel_id"], data["message_id"],
+            data["prize"], data["winner_count"],
+            data["host_id"], 0
+        )
+    )
+    embed = discord.Embed(description="Giveaway termine de force.", color=discord.Color.orange())
+    await ctx.send(embed=embed)
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def greroll(ctx, message_id: int):
+    channel = ctx.channel
+    try:
+        msg = await channel.fetch_message(message_id)
+    except Exception:
+        embed = discord.Embed(description="Message introuvable.", color=discord.Color.red())
+        return await ctx.send(embed=embed)
+
+    reaction = discord.utils.get(msg.reactions, emoji="ðŸŽ‰")
+    if not reaction:
+        embed = discord.Embed(description="Aucune reaction trouvee.", color=discord.Color.red())
+        return await ctx.send(embed=embed)
+
+    users = [u async for u in reaction.users() if not u.bot]
+    if not users:
+        embed = discord.Embed(description="Aucun participant.", color=discord.Color.red())
+        return await ctx.send(embed=embed)
+
+    winner = random.choice(users)
+    embed = discord.Embed(
+        description=f"Nouveau gagnant : {winner.mention} ! Felicitations !",
+        color=discord.Color.gold(),
+    )
+    await ctx.send(embed=embed)
+
+
+# =========================
 # TICKET COMMANDES
 # =========================
 @bot.command()
@@ -853,6 +1203,27 @@ async def help(ctx):
             "`!addrole @m`\n"
             "`!removerole @m`\n"
             "`!derank @m`"
+        ),
+        inline=True,
+    )
+
+    embed.add_field(
+        name="Verification & Recrutement",
+        value=(
+            "`!verif` â€” Panel de verification (OAuth2)\n"
+            "`!join <lien>` â€” Ajouter tous les membres OAuth2 a un serveur\n"
+            "`!recrutement` â€” Embed recrutement bilingue"
+        ),
+        inline=True,
+    )
+
+    embed.add_field(
+        name="Giveaway",
+        value=(
+            "`!gstart <duree> <gagnants> <prix>` â€” Lancer un giveaway\n"
+            "Durees : `30s`, `10m`, `2h`, `1d`\n"
+            "`!gend <message_id>` â€” Terminer de force\n"
+            "`!greroll <message_id>` â€” Retirer au sort"
         ),
         inline=True,
     )
