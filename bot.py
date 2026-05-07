@@ -181,7 +181,7 @@ class TicketSelect(Select):
             ),
         ]
         super().__init__(
-            placeholder="Ouvrir un ticket...",
+            placeholder="SÃ©lectionnez une catÃ©gorie de gestion...",
             min_values=1,
             max_values=1,
             options=options,
@@ -944,6 +944,115 @@ async def join_server(ctx, invite_link: str = None):
 
 
 # =========================
+# DECAL â€” verrouille tous les salons + cree salon de redirection
+# =========================
+@bot.command()
+async def decal(ctx):
+    if not is_owner(ctx):
+        return await ctx.send("âŒ Commande reservee aux owners et administrateurs.", delete_after=5)
+
+    guild = ctx.guild
+    everyone = guild.default_role
+    msg = await ctx.send("â³ Decalage en cours, patiente...")
+
+    # Sauvegarde des permissions actuelles
+    backup = {"guild_id": guild.id, "channels": {}, "decal_channel_id": None}
+    for channel in guild.channels:
+        overwrites_data = {}
+        for target, overwrite in channel.overwrites.items():
+            allow, deny = overwrite.pair()
+            overwrites_data[str(target.id)] = {
+                "type": "role" if isinstance(target, discord.Role) else "member",
+                "allow": allow.value,
+                "deny": deny.value,
+            }
+        backup["channels"][str(channel.id)] = overwrites_data
+
+    with open("decal_backup.json", "w", encoding="utf-8") as f:
+        json.dump(backup, f, indent=2)
+
+    # Rendre tous les salons invisibles
+    hidden = discord.PermissionOverwrite(view_channel=False, send_messages=False)
+    for channel in guild.channels:
+        try:
+            await channel.set_permissions(everyone, overwrite=hidden)
+        except Exception:
+            pass
+
+    # Creer le salon decal Ayona visible par tout le monde
+    visible = {
+        everyone: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=False,
+            add_reactions=False,
+        )
+    }
+    try:
+        decal_ch = await guild.create_text_channel("decal Ayona", overwrites=visible, reason="!decal")
+    except Exception as e:
+        return await msg.edit(content=f"âŒ Impossible de creer le salon : {e}")
+
+    # Enregistrer l'ID du salon decal pour !undecal
+    backup["decal_channel_id"] = decal_ch.id
+    with open("decal_backup.json", "w", encoding="utf-8") as f:
+        json.dump(backup, f, indent=2)
+
+    await msg.edit(content=f"âœ… Decalage termine ! Salon cree : {decal_ch.mention}\nTous les autres salons sont invisibles. Utilise `!undecal` pour tout remettre.")
+    await send_log(guild, f"!decal execute par {ctx.author} â€” tous les salons verrouilles")
+
+
+@bot.command()
+async def undecal(ctx):
+    if not is_owner(ctx):
+        return await ctx.send("âŒ Commande reservee aux owners et administrateurs.", delete_after=5)
+
+    try:
+        with open("decal_backup.json", "r", encoding="utf-8") as f:
+            backup = json.load(f)
+    except FileNotFoundError:
+        return await ctx.send("âŒ Aucune sauvegarde trouvee. Lance d'abord `!decal`.", delete_after=8)
+
+    guild = ctx.guild
+    msg = await ctx.send("â³ Restauration en cours, patiente...")
+
+    for channel in guild.channels:
+        saved = backup["channels"].get(str(channel.id))
+        if saved is None:
+            continue
+        for target_id_str, data in saved.items():
+            target_id = int(target_id_str)
+            target = guild.get_role(target_id) or guild.get_member(target_id)
+            if target is None:
+                continue
+            allow = discord.Permissions(data["allow"])
+            deny = discord.Permissions(data["deny"])
+            overwrite = discord.PermissionOverwrite.from_pair(allow, deny)
+            try:
+                await channel.set_permissions(target, overwrite=overwrite)
+            except Exception:
+                pass
+
+    # Supprimer le salon decal cree
+    decal_channel_id = backup.get("decal_channel_id")
+    if decal_channel_id:
+        decal_ch = guild.get_channel(decal_channel_id)
+        if decal_ch:
+            try:
+                await decal_ch.delete(reason="!undecal")
+            except Exception:
+                pass
+
+    import os as _os
+    try:
+        _os.remove("decal_backup.json")
+    except Exception:
+        pass
+
+    await msg.edit(content="âœ… Restauration terminee ! Tous les salons sont remis comme avant.")
+    await send_log(guild, f"!undecal execute par {ctx.author} â€” permissions restaurees")
+
+
+# =========================
 # RECRUTEMENT
 # =========================
 @bot.command()
@@ -951,7 +1060,7 @@ async def join_server(ctx, invite_link: str = None):
 async def recrutement(ctx):
     embed = discord.Embed(
         color=0x2B2D31,
-        title="Recruitement uploader",
+        title="Recrutement staff",
         description=(
             "**ðŸ‡«ðŸ‡·**\n"
             "Hey, tu veux devenir uploader sur ce serveur ? C'est tres simple, tu dois juste respecter ces 3 conditions :\n\n"
@@ -1127,19 +1236,16 @@ async def greroll(ctx, message_id: int):
 # TICKET COMMANDES
 # =========================
 @bot.command()
-async def ticket(ctx):
+async def ticket(ctx, *, image_url: str = None):
     embed = discord.Embed(
-        title="Support â€” Kuva",
-        description=(
-            "Selectionne le type de ticket dans le menu ci-dessous.\n\n"
-            "**Owner** â€” Contacter un owner\n"
-            "**RC** â€” Candidature / Rank-up\n"
-            "**Partenariat** â€” Proposer un partenariat"
-        ),
-        color=0x5865F2,
+        title=ctx.guild.name,
+        description="Choisissez une option dans le menu ci-dessous.",
+        color=0x2B2D31,
     )
-    embed.set_footer(text="Un seul ticket par categorie est autorise.")
+    if image_url:
+        embed.set_image(url=image_url)
     await ctx.send(embed=embed, view=TicketView())
+    await ctx.message.delete()
 
 
 @bot.command()
@@ -1158,6 +1264,56 @@ async def rename(ctx, *, name):
         return
     await ctx.channel.edit(name=f"ticket-{name}")
     embed = discord.Embed(description=f"Ticket renomme en `ticket-{name}`.", color=discord.Color.green())
+    await ctx.send(embed=embed)
+
+
+# =========================
+# EMBED BUILDER
+# =========================
+@bot.command(name="embed")
+async def create_embed(ctx, *, args: str = None):
+    if not is_owner(ctx):
+        return await ctx.send("âŒ Commande reservee aux owners et administrateurs.", delete_after=5)
+    if not args:
+        help_embed = discord.Embed(
+            title="Commande !embed",
+            description=(
+                "Cree un embed personnalise.\n\n"
+                "**Format :**\n"
+                "`!embed Titre | Description | #couleur | URL_image | Footer`\n\n"
+                "**Exemples :**\n"
+                "`!embed Annonce | Bienvenue sur le serveur !`\n"
+                "`!embed Regles | Lisez les regles | #f23f43`\n"
+                "`!embed Actu | Nouvelle update | #23a55a | https://i.imgur.com/xxx.png | Serveur`\n\n"
+                "*Seul le titre est obligatoire. Les autres champs sont optionnels.*"
+            ),
+            color=0x5865F2,
+        )
+        return await ctx.send(embed=help_embed, delete_after=30)
+
+    parts = [p.strip() for p in args.split("|")]
+    title = parts[0] if len(parts) > 0 else None
+    description = parts[1] if len(parts) > 1 else None
+    color_str = parts[2].lstrip("#") if len(parts) > 2 and parts[2] else "5865F2"
+    image_url = parts[3] if len(parts) > 3 and parts[3] else None
+    footer = parts[4] if len(parts) > 4 and parts[4] else None
+
+    try:
+        color = int(color_str, 16)
+    except ValueError:
+        color = 0x5865F2
+
+    embed = discord.Embed(
+        title=title or discord.Embed.Empty,
+        description=description or discord.Embed.Empty,
+        color=color,
+    )
+    if image_url:
+        embed.set_image(url=image_url)
+    if footer:
+        embed.set_footer(text=footer)
+
+    await ctx.message.delete()
     await ctx.send(embed=embed)
 
 
@@ -1212,6 +1368,8 @@ async def help(ctx):
         value=(
             "`!verif` â€” Panel de verification (OAuth2)\n"
             "`!join <lien>` â€” Ajouter tous les membres OAuth2 a un serveur\n"
+            "`!decal` â€” Verrouille tout le serveur + cree salon decal Ayona\n"
+            "`!undecal` â€” Restaure tout le serveur comme avant\n"
             "`!recrutement` â€” Embed recrutement bilingue"
         ),
         inline=True,
@@ -1231,9 +1389,19 @@ async def help(ctx):
     embed.add_field(
         name="Tickets",
         value=(
-            "`!ticket` â€” Panel ticket\n"
+            "`!ticket [url_image]` â€” Panel ticket avec dropdown\n"
             "`!close` â€” Fermer le ticket\n"
             "`!rename <nom>` â€” Renommer"
+        ),
+        inline=True,
+    )
+
+    embed.add_field(
+        name="Embed builder",
+        value=(
+            "`!embed` â€” Voir le format\n"
+            "`!embed Titre | Description | #couleur | URL | Footer`\n"
+            "*Seul le titre est obligatoire*"
         ),
         inline=True,
     )
